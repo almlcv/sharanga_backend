@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+.env
+
+DOJO/
+uploads/
+
+factory_management.employee_profiles.migrated.json
+factory_management.login.migrated.json
+INV-DOJO-Project.DOJO.json
+INV-DOJO-Project.UserAuth.json
+INV-DOJO-Project.UserAuth.json
+logincredentials_new.json
+RabsProject.DOJO.json
+RabsProject.UserAuth.json
+
+migration.py
+
+sharanga 
