@@ -1,7 +1,7 @@
 from fastapi import HTTPException
-from typing import List, Dict, Union
+from typing import List, Dict
+from pymongo.errors import DuplicateKeyError
 
-# Import the Schemas (Assuming they are in app.core.schemas.parts_config based on structure)
 from app.core.schemas.parts_config import PartConfigCreate, PartConfigUpdate
 from app.core.models.parts_config import PartConfiguration
 
@@ -10,18 +10,13 @@ class PartConfigurationService:
     """Service handling logic for Part Configurations."""
 
     @staticmethod
-    async def create_or_update_part(part_data: Union[PartConfigCreate, dict]) -> PartConfiguration:
+    async def create_or_update_part(part_data: PartConfigCreate) -> PartConfiguration:
         """
         Creates or updates a part configuration.
-        Accepts a Pydantic model for automatic validation (e.g., bin_capacity checks).
+        Enforces strict validation and Unique constraints.
         """
-        # Accept either a Pydantic model or a plain dict (routes often pass model_dump())
-        if isinstance(part_data, dict):
-            part_name = part_data.get("part_description")
-            has_sided_parts = part_data.get("create_sides", False)
-        else:
-            part_name = part_data.part_description
-            has_sided_parts = part_data.create_sides
+        part_name = part_data.part_description
+        has_sided_parts = part_data.crate_sides
 
         # --- Check for Existing Part ---
         existing = await PartConfiguration.find_one({
@@ -34,21 +29,14 @@ class PartConfigurationService:
             lh_name = f"{part_name} LH"
             variations = [rh_name, lh_name]
         else:
-            # If updating and flag is False, don't wipe existing variations
+            # Preserve existing variations on update
             if existing:
                 variations = existing.variations
             else:
-                # Creating a new part, no sides
                 variations = []
 
         # --- Upsert Logic ---
-        # Convert to clean dict, excluding helper fields
-        if isinstance(part_data, dict):
-            clean_data = {k: v for k, v in part_data.items() if k not in {"create_sides", "variations"}}
-        else:
-            clean_data = part_data.model_dump(exclude={"create_sides", "variations"})
-        
-        # Add back the calculated variations
+        clean_data = part_data.model_dump(exclude={"crate_sides", "variations"})
         clean_data["variations"] = variations
 
         if existing:
@@ -59,9 +47,16 @@ class PartConfigurationService:
             return existing
         else:
             # Create new
-            new_part = PartConfiguration(**clean_data)
-            await new_part.insert()
-            return new_part
+            try:
+                new_part = PartConfiguration(**clean_data)
+                await new_part.insert()
+                return new_part
+            except DuplicateKeyError:
+                # Handles race condition or duplicate creation attempts
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Part with description '{part_name}' already exists."
+                )
 
     @staticmethod
     async def get_all_parts(active_only: bool = True) -> List[PartConfiguration]:
@@ -97,18 +92,16 @@ class PartConfigurationService:
     @staticmethod
     async def update_part_details(part_description: str, update_data: PartConfigUpdate) -> PartConfiguration:
         """
-        Allows manual override of details like RM/MB, Machine, bin_capacity, etc.
-        Accepts a Pydantic model for validation.
+        Updates part details.
+        Safety: Prevents modification of critical identity fields.
         """
         part = await PartConfigurationService.get_part_by_description(part_description)
         
-        # Accept either a Pydantic model or a plain dict from route
-        if isinstance(update_data, dict):
-            update_dict = update_data
-        else:
-            # Convert Pydantic model to dict, excluding unset values (None)
-            # This ensures we only update fields that were actually in the request
-            update_dict = update_data.model_dump(exclude_unset=True)
+        update_dict = update_data.model_dump(exclude_unset=True)
+        
+        # SAFETY: Prevent updating identity fields
+        update_dict.pop("part_description", None) 
+        update_dict.pop("variations", None) 
         
         for key, value in update_dict.items():
             setattr(part, key, value)

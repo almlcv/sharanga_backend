@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -13,7 +13,7 @@ class FGStockResponse(BaseModel):
     variant_name: str
     part_number: str
     part_description: str
-    side: str
+    side: Optional[str] 
     
     opening_stock: int
     production_added: int
@@ -24,21 +24,22 @@ class FGStockResponse(BaseModel):
     bins_available: BinInventorySchema
     bin_size: Optional[int]
     
-    monthly_schedule: Optional[int]
+    monthly_schedule: Optional[int] 
     daily_target: Optional[int]
     variance_vs_target: Optional[int] = None
     
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 class ManualStockAdjustmentRequest(BaseModel):
-    """Manual stock adjustment (add or subtract)"""
+    """Manual stock adjustment (Set Absolute Inspection Quantity)"""
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     variant_name: str
-    inspection_qty: int = Field(..., description="Positive to add, negative to subtract")
+    # Description updated to match production logic (Absolute set)
+    inspection_qty: int = Field(..., description="Set absolute inspection quantity (must be >= 0)")
     remarks: str = Field(..., min_length=5, description="Reason for adjustment")
 
 
@@ -62,6 +63,7 @@ class DispatchRequest(BaseModel):
     )
     
     @field_validator('dispatched_qty')
+    @classmethod
     def validate_positive(cls, v):
         if v <= 0:
             raise ValueError("Dispatched quantity must be positive")
@@ -88,12 +90,12 @@ class MonthlyFGStockSummary(BaseModel):
     month: int
     variant_name: str
     part_description: str
-    side: str
+    side: Optional[str]
     
     opening_stock_month: int
     total_production: int
     total_dispatched: int
-    total_adjustments: int
+    inspection_qty: int
     closing_stock_month: int
     
     monthly_plan: Optional[int]

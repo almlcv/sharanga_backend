@@ -1,162 +1,141 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 from typing import List
-
-from app.core.schemas.auth import CurrentUser
-from app.core.auth.deps import require_roles, get_current_user
 from app.core.schemas.parts_config import (
-    PartConfigCreate, 
-    PartConfigUpdate, 
-    PartConfigResponse, 
+    PartConfigCreate,
+    PartConfigUpdate,
+    PartConfigResponse,
     PartConfigStatusUpdate
 )
 from app.modules.parts_config.part_configuration_service import PartConfigurationService
+from app.core.auth.deps import get_current_user, require_roles
 
-router = APIRouter(tags=["Part Configuration"], prefix="/parts/config")
+router = APIRouter(tags=["Parts Configuration"], prefix="/parts/config")
 
 
-# ==================== ENDPOINTS ====================
+# ============================================================
+# HELPER FUNCTION: SERIALIZATION FIX
+# ============================================================
+def _to_response_model(document) -> dict:
+    """
+    Converts a Beanie Document to a dictionary compatible with PartConfigResponse.
+    
+    Fixes the 'ObjectId' validation error by manually converting the MongoDB ID to a string.
+    This ensures the API layer handles serialization cleanly without modifying the Service layer.
+    """
+    response_dict = document.model_dump()
+    response_dict['id'] = str(document.id)
+    return response_dict
+
+
+# ============================================================
+# PART CONFIGURATION ENDPOINTS
+# ============================================================
 
 @router.post(
-    "/", 
-    response_model=PartConfigResponse, 
-    status_code=status.HTTP_201_CREATED,
-    summary="Create or Update Part Configuration",
-    description="Input: Part Name, Part Number, Machine, RM/MB. Optional: create_sides flag."
+    "/",
+    response_model=PartConfigResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Create or Update Part",
+    description="""
+    Creates a new part configuration or updates an existing one.
+    
+    **Behavior:**
+    - If `part_description` already exists, it updates the record (Upsert).
+    - If `crate_sides` is True, automatically generates 'LH' and 'RH' variations.
+    - Enforces unique `part_description` and `part_number` constraints.
+    
+    **Role Required:** Admin or Production.
+    """
 )
 async def create_or_update_part_config(
     part_data: PartConfigCreate,
-    current_user: CurrentUser = Depends(require_roles("Admin"))
+    current_user: dict = Depends(require_roles("Admin", "Production"))
 ):
-    """
-    Create a new part or update an existing one.
-    
-    **Input Fields:**
-    - `part_description`: The unique name of the part.
-    - `part_number`: The item code.
-    - `machine`: The machine assigned (e.g., 120T).
-    - `rm_mb`: List of raw materials.
-    - `create_sides`: (Optional) Set to true to auto-generate RH/LH variants.
-    """
-    result = await PartConfigurationService.create_or_update_part(part_data.model_dump())
-    
-    return PartConfigResponse(
-        id=str(result.id),
-        part_description=result.part_description,
-        part_number=result.part_number,
-        machine=result.machine,
-        rm_mb=result.rm_mb,
-        cycle_time=result.cycle_time,
-        part_weight=result.part_weight,
-        runner_weight=result.runner_weight,
-        cavity=result.cavity,
-        variations=result.variations,
-        is_active=result.is_active,
-        created_at=result.created_at,
-        updated_at=result.updated_at
-    )
+    result = await PartConfigurationService.create_or_update_part(part_data)
+    return _to_response_model(result)
 
 
 @router.get(
-    "/", 
+    "/",
     response_model=List[PartConfigResponse],
-    summary="Get All Part Configurations",
+    summary="Get All Parts",
+    description="""
+    Retrieves a list of all part configurations.
+    
+    **Filtering:**
+    - `active_only=True` (default): Returns only parts currently in production.
+    - `active_only=False`: Returns all parts including archived/deactivated ones.
+    """
 )
 async def get_all_parts(
-    active_only: bool = Query(True, description="Filter to show only active parts."),
-    current_user: CurrentUser = Depends(require_roles("Production", "Admin"))
+    active_only: bool = True,
+    current_user: dict = Depends(get_current_user)
 ):
     parts = await PartConfigurationService.get_all_parts(active_only)
-    
-    return [
-        PartConfigResponse(
-            id=str(p.id),
-            part_description=p.part_description,
-            part_number=p.part_number,
-            machine=p.machine,
-            rm_mb=p.rm_mb,
-            cycle_time=p.cycle_time,
-            part_weight=p.part_weight,
-            runner_weight=p.runner_weight,
-            cavity=p.cavity,
-            variations=p.variations,
-            is_active=p.is_active,
-            created_at=p.created_at,
-            updated_at=p.updated_at
-        )
-        for p in parts
-    ]
+    # Apply serialization fix to the list
+    return [_to_response_model(p) for p in parts]
 
 
 @router.get(
-    "/{part_description}", 
+    "/{part_description}",
     response_model=PartConfigResponse,
-    summary="Get Specific Part Configuration",
+    summary="Get Part by Description",
+    description="""
+    Retrieves detailed specifications for a specific part.
+    
+    **Context:** Used by the Frontend to populate forms and by FG Stock to fetch automation settings (Bin Capacity).
+    """
 )
-async def get_part_config(
+async def get_part_by_description(
     part_description: str,
-    current_user: CurrentUser = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    part = await PartConfigurationService.get_part_by_description(part_description)
-    return PartConfigResponse(
-        id=str(part.id),
-        part_description=part.part_description,
-        part_number=part.part_number,
-        machine=part.machine,
-        rm_mb=part.rm_mb,
-        cycle_time=part.cycle_time,
-        part_weight=part.part_weight,
-        runner_weight=part.runner_weight,
-        cavity=part.cavity,
-        variations=part.variations,
-        is_active=part.is_active,
-        created_at=part.created_at,
-        updated_at=part.updated_at
-    )
+    result = await PartConfigurationService.get_part_by_description(part_description)
+    return _to_response_model(result)
 
 
 @router.patch(
-    "/{part_description}/status", 
-    response_model=dict,
-    summary="Activate or Deactivate Part",
-)
-async def update_part_status(
-    part_description: str,
-    status_data: PartConfigStatusUpdate,
-    current_user: CurrentUser = Depends(require_roles("Admin"))
-):
-    return await PartConfigurationService.update_part_status(
-        part_description, 
-        status_data.is_active
-    )
-
-
-@router.put(
-    "/{part_description}", 
+    "/{part_description}",
     response_model=PartConfigResponse,
     summary="Update Part Details",
+    description="""
+    Updates technical specifications (Machine, Bin Capacity, RM, etc.).
+    
+    **Safety:**
+    - `part_description` is **immutable**. Changing the name would break links to historical FG Stock data.
+    - Only fields provided in the request body are updated (Partial Update).
+    
+    **Use Case:** Correcting `bin_capacity` or changing `machine` assignment.
+    
+    **Role Required:** Admin or Production.
+    """
 )
 async def update_part_details(
     part_description: str,
     update_data: PartConfigUpdate,
-    current_user: CurrentUser = Depends(require_roles("Admin"))
+    current_user: dict = Depends(require_roles("Admin", "Production"))
 ):
-    result = await PartConfigurationService.update_part_details(
-        part_description, 
-        update_data.model_dump(exclude_unset=True)
-    )
+    result = await PartConfigurationService.update_part_details(part_description, update_data)
+    return _to_response_model(result)
+
+
+@router.patch(
+    "/{part_description}/status",
+    summary="Toggle Part Status",
+    description="""
+    Activates or Deactivates a part.
     
-    return PartConfigResponse(
-        id=str(result.id),
-        part_description=result.part_description,
-        part_number=result.part_number,
-        machine=result.machine,
-        rm_mb=result.rm_mb,
-        cycle_time=result.cycle_time,
-        part_weight=result.part_weight,
-        runner_weight=result.runner_weight,
-        cavity=result.cavity,
-        variations=result.variations,
-        is_active=result.is_active,
-        created_at=result.created_at,
-        updated_at=result.updated_at
+    **Deactivation:** The part will not appear in daily production lists, but historical FG Stock data remains intact.
+    
+    **Role Required:** Admin.
+    """
+)
+async def update_part_status(
+    part_description: str,
+    status_data: PartConfigStatusUpdate,
+    current_user: dict = Depends(require_roles("Admin"))
+):
+    return await PartConfigurationService.update_part_status(
+        part_description, 
+        status_data.is_active
     )

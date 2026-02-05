@@ -240,6 +240,12 @@ class HourlyProductionService:
                 detail="Failed to create document. Please try again."
             )
 
+        # Ensure the response includes a string _id for JSON responses
+        try:
+            doc._id = str(doc.id)
+        except Exception:
+            doc._id = None
+
         logger.info(
             f"Document initialized: {fixed_doc_no} for date {payload.date}. "
             f"Status: {doc_status}. Age: {age_info['age_days']} days. "

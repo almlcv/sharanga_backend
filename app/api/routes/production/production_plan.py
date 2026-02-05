@@ -10,7 +10,7 @@ from app.core.models.parts_config import PartConfiguration
 from app.core.schemas.auth import CurrentUser
 from app.core.auth.deps import require_roles
 from app.shared.cache_manager import refresh_monthly_plan_cache
-from app.shared.timezone import get_ist_now
+from app.shared.timezone import get_ist_now, IST
 
 router = APIRouter(tags=["Production Plan"], prefix="/production/plan")
 
@@ -244,10 +244,10 @@ async def get_monthly_production_plan(
     current_month = int(month)
     
     if current_month == 12:
-        next_month_start = datetime(current_year + 1, 1, 1)
+        next_month_start = datetime(current_year + 1, 1, 1, tzinfo=IST)
     else:
-        next_month_start = datetime(current_year, current_month + 1, 1)
-        
+        next_month_start = datetime(current_year, current_month + 1, 1, tzinfo=IST)
+
     now = get_ist_now()
     ttl_seconds = int((next_month_start - now).total_seconds())
     

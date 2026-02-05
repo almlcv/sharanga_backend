@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from typing import Optional, List
 from datetime import datetime
+from bson import ObjectId
 
 
 class PartConfigBase(BaseModel):
@@ -21,14 +22,11 @@ class PartConfigBase(BaseModel):
     )
 
 
-
 class PartConfigCreate(PartConfigBase):
     """
     Schema for creating a new part.
-    Matches the exact input structure requested.
     """
-    # Logic Flag: If True, backend creates 'Name RH' and 'Name LH'
-    create_sides: bool = Field(
+    crate_sides: bool = Field(
         False,
         description="If true, generates RH and LH variants automatically."
     )
@@ -36,7 +34,7 @@ class PartConfigCreate(PartConfigBase):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "create_sides": True,
+                "crate_sides": True,
                 "machine": "120T",
                 "part_description": "ALTROZ BRACKET-D",
                 "part_number": "10077-7R05S",
@@ -44,26 +42,30 @@ class PartConfigCreate(PartConfigBase):
                 "cycle_time": 12.5,
                 "part_weight": 45.3,
                 "runner_weight": 2.5,
-                "cavity": 4
+                "cavity": 4,
+                "bin_capacity": 100
             }
         }
     )
 
 
 class PartConfigUpdate(BaseModel):
-    """Schema for partial updates"""
+    """
+    Schema for partial updates.
+    
+    NOTE: 'part_description' is intentionally excluded. 
+    Renaming parts breaks historical links in FG Stock.
+    """
     part_number: Optional[str] = None
     machine: Optional[str] = None
     rm_mb: Optional[List[str]] = None
     is_active: Optional[bool] = None
-    
-    # Allows manual override of generated variants if needed
     variations: Optional[List[str]] = None
     cycle_time: Optional[float] = None
     part_weight: Optional[float] = None
     runner_weight: Optional[float] = None
     cavity: Optional[int] = Field(None, ge=1, le=8)
-
+    
     bin_capacity: Optional[int] = Field(None, ge=1)
 
 
@@ -77,6 +79,10 @@ class PartConfigResponse(PartConfigBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer('id')
+    def serialize_id(self, value: ObjectId, _info):
+        return str(value)
 
 
 class PartConfigStatusUpdate(BaseModel):
