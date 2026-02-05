@@ -58,6 +58,16 @@ class HourlyProductionService:
                 status.HTTP_404_NOT_FOUND,
                 detail=f"Document '{doc_no}' not found"
             )
+        # Coerce legacy operator_name string into list for backward compatibility
+        try:
+            if hasattr(doc, "operator_name"):
+                if isinstance(doc.operator_name, str):
+                    doc.operator_name = [doc.operator_name]
+                elif doc.operator_name is None:
+                    doc.operator_name = []
+        except Exception:
+            # If coercion fails, leave as-is and let later validation handle it
+            pass
         return doc
     
     @staticmethod
@@ -90,6 +100,32 @@ class HourlyProductionService:
             (e for e in doc.entries if e.time_slot == time_slot), 
             None
         )
+
+    @staticmethod
+    def _canonicalize_downtime(code: Optional[str]) -> Optional[str]:
+        """Map various downtime code spellings to canonical schema literals."""
+        if code is None:
+            return None
+        mapping = {
+            "m/c bd": "M/C BD",
+            "tool bd": "Tool BD",
+            "power failure": "Power failure",
+            "quality issue": "Quality issue",
+            "material shortage": "Material shortage",
+            "mc/tool maintenance": "MC/Tool Maintenance",
+            "rm loading": "RM Loading",
+            "new operator": "New Operator",
+            "operator on leave / permission": "Operator on leave / Permission",
+            "setting": "Setting",
+            "no manpower": "No manpower",
+            "trial": "Trial",
+            "startup": "Startup",
+            "mold change": "Mold change",
+            "molding change": "Mold change",
+            "other": "Other",
+        }
+        norm = str(code).strip().lower()
+        return mapping.get(norm, "Other")
     
     @staticmethod
     def _update_existing_entry(
@@ -155,17 +191,10 @@ class HourlyProductionService:
         payload: InitializeDocumentRequest
     ) -> HourlyProductionDocument:
         """Initialize a new document with automatic document_status determination."""
-        # Check if document already exists
-        existing = await HourlyProductionDocument.find_one(
-            HourlyProductionDocument.doc_no == payload.doc_no,
-            HourlyProductionDocument.date == payload.date,
-        )
-        
-        if existing:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                detail=f"Document '{payload.doc_no}' already exists for date {payload.date}"
-            )
+        # Fixed document number used for all initialized documents
+        fixed_doc_no = "RI/PRD/R/70A"
+
+        # Note: fixed `doc_no` is allowed to repeat; no uniqueness check performed
 
         # Determine document status based on age
         now = datetime.now(HourlyProductionService.TIMEZONE)
@@ -180,10 +209,10 @@ class HourlyProductionService:
                        f"(maximum allowed: {age_info['max_age_days']} days)"
             )
 
-        # Create document with determined status
+        # Create document with determined status and fixed doc number
         doc = HourlyProductionDocument(
             date=payload.date,
-            doc_no=payload.doc_no,
+            doc_no=fixed_doc_no,
             document_status=doc_status,
             side=payload.side,
             part_number=payload.part_number,
@@ -205,14 +234,14 @@ class HourlyProductionService:
         try:
             await doc.insert()
         except Exception as e:
-            logger.error(f"Failed to insert document {payload.doc_no}: {e}")
+            logger.error(f"Failed to insert document {fixed_doc_no}: {e}")
             raise HTTPException(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create document. Please try again."
             )
 
         logger.info(
-            f"Document initialized: {payload.doc_no} for date {payload.date}. "
+            f"Document initialized: {fixed_doc_no} for date {payload.date}. "
             f"Status: {doc_status}. Age: {age_info['age_days']} days. "
             f"Side: {payload.side}"
         )
@@ -248,10 +277,31 @@ class HourlyProductionService:
             [(HourlyProductionDocument.date, DESCENDING)]
         ).to_list()
         
+        # Normalize operator_name and downtime_code for response validation
+        for doc in docs:
+            try:
+                if isinstance(doc.operator_name, str):
+                    doc.operator_name = [doc.operator_name]
+                elif doc.operator_name is None:
+                    doc.operator_name = []
+            except Exception:
+                doc.operator_name = []
+
+            for e in doc.entries:
+                try:
+                    e.downtime_code = HourlyProductionService._canonicalize_downtime(e.downtime_code)
+                except Exception:
+                    e.downtime_code = "Other"
+
+            try:
+                doc._id = str(doc.id)
+            except Exception:
+                doc._id = None
+
         logger.info(
             f"Admin {current_user.emp_id} retrieved {len(docs)} pending documents."
         )
-        
+
         return docs
 
     # -------------------------
@@ -266,8 +316,17 @@ class HourlyProductionService:
         """
         Submit hourly entries - ONLY if document_status is OPEN or APPROVED.
         """
-        # Fetch document
-        doc = await HourlyProductionService._get_document_or_404(payload.doc_no)
+        # Fetch by MongoDB _id only
+        try:
+            doc = await HourlyProductionDocument.get(payload.document_id)
+        except Exception:
+            try:
+                doc = await HourlyProductionDocument.find_one({"_id": payload.document_id})
+            except Exception:
+                doc = None
+
+        if doc is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Target document not found. Provide document_id (_id)")
         
         # Check if finalized
         if doc.is_finalized:
@@ -390,14 +449,28 @@ class HourlyProductionService:
         try:
             await FGStockService.update_from_hourly_production(
                 doc, 
-                current_user.get("emp_id")
+                current_user.emp_id
             )
             logger.info(f"FG Stock updated for document {doc.doc_no}")
         except Exception as e:
             # Don't fail hourly submission if FG stock update fails
             logger.error(f"FG Stock update failed for {doc.doc_no}: {e}", exc_info=True)
             # Could send alert to admin here
-            
+        # Normalize operator_name and downtime_code for response validation
+        try:
+            if isinstance(doc.operator_name, str):
+                doc.operator_name = [doc.operator_name]
+            elif doc.operator_name is None:
+                doc.operator_name = []
+        except Exception:
+            doc.operator_name = []
+
+        for e in doc.entries:
+            try:
+                e.downtime_code = HourlyProductionService._canonicalize_downtime(e.downtime_code)
+            except Exception:
+                e.downtime_code = "Other"
+
         return doc
 
     # -------------------------
@@ -417,8 +490,20 @@ class HourlyProductionService:
                 detail="Only Admin users can approve or reject document status"
             )
         
-        # Fetch document
-        doc = await HourlyProductionService._get_document_or_404(payload.doc_no)
+        # Fetch document (by _id or doc_no fallback)
+        doc = None
+        if getattr(payload, "document_id", None):
+            try:
+                doc = await HourlyProductionDocument.get(payload.document_id)
+            except Exception:
+                try:
+                    doc = await HourlyProductionDocument.find_one({"_id": payload.document_id})
+                except Exception:
+                    doc = None
+        if doc is None and getattr(payload, "doc_no", None):
+            doc = await HourlyProductionService._get_document_or_404(payload.doc_no)
+        if doc is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Target document not found")
 
         # Validate current status
         if doc.document_status != "PENDING_APPROVAL":
@@ -482,7 +567,19 @@ class HourlyProductionService:
         current_user: Dict[str, Any]
     ) -> HourlyProductionDocument:
         """Add digital signature to document."""
-        doc = await HourlyProductionService._get_editable_document(payload.doc_no)
+        doc = None
+        if getattr(payload, "document_id", None):
+            try:
+                doc = await HourlyProductionDocument.get(payload.document_id)
+            except Exception:
+                try:
+                    doc = await HourlyProductionDocument.find_one({"_id": payload.document_id})
+                except Exception:
+                    doc = None
+        if doc is None and getattr(payload, "doc_no", None):
+            doc = await HourlyProductionService._get_editable_document(payload.doc_no)
+        if doc is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Target document not found")
 
         # Authorization check based on signature type
         if payload.signature_type == "OPERATOR":
@@ -566,8 +663,20 @@ class HourlyProductionService:
         
         Authorization: Restricted to 'Admin' or 'Production Head' only.
         """
-        # 1. Fetch Document
-        doc = await HourlyProductionService._get_document_or_404(payload.doc_no)
+        # 1. Fetch Document (prefer document_id)
+        doc = None
+        if getattr(payload, "document_id", None):
+            try:
+                doc = await HourlyProductionDocument.get(payload.document_id)
+            except Exception:
+                try:
+                    doc = await HourlyProductionDocument.find_one({"_id": payload.document_id})
+                except Exception:
+                    doc = None
+        if doc is None and getattr(payload, "doc_no", None):
+            doc = await HourlyProductionService._get_document_or_404(payload.doc_no)
+        if doc is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Target document not found")
         
         # ============================================================
         # 2. AUTHORIZATION GATE (Admin or Production Head only)
@@ -628,7 +737,19 @@ class HourlyProductionService:
         payload: UpdateDocumentDetailsRequest
     ) -> HourlyProductionDocument:
         """Update document-level details (Manual Totals)."""
-        doc = await HourlyProductionService._get_document_or_404(payload.doc_no)
+        doc = None
+        if getattr(payload, "document_id", None):
+            try:
+                doc = await HourlyProductionDocument.get(payload.document_id)
+            except Exception:
+                try:
+                    doc = await HourlyProductionDocument.find_one({"_id": payload.document_id})
+                except Exception:
+                    doc = None
+        if doc is None and getattr(payload, "doc_no", None):
+            doc = await HourlyProductionService._get_document_or_404(payload.doc_no)
+        if doc is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Target document not found")
 
         # Track what was updated
         updates = []
@@ -672,9 +793,7 @@ class HourlyProductionService:
     @staticmethod
     async def get_documents(
         date: str,
-        doc_no: Optional[str] = None,
         shift_name: Optional[str] = None,
-        status: Optional[str] = None
     ) -> List[HourlyProductionDocument]:
         """Retrieve production documents with optional filtering."""
         # Validate date format
@@ -686,10 +805,8 @@ class HourlyProductionService:
                 detail=f"Invalid date format: {date}. Expected YYYY-MM-DD"
             )
         
-        # Build query
+        # Build query (only date filter supported)
         query = {"date": date}
-        if doc_no:
-            query["doc_no"] = doc_no
         
         try:
             docs = await HourlyProductionDocument.find(query).to_list()
@@ -701,21 +818,72 @@ class HourlyProductionService:
             )
         
         # Filter entries if needed
-        if shift_name or status:
+        # Normalize legacy operator_name (string -> list) and sanitize downtime_code values
+        allowed_downtimes = {
+            "M/C BD (Machine Breakdown)",
+            "Tool BD",
+            "Power failure",
+            "Quality issue",
+            "Material shortage",
+            "MC/Tool Maintenance",
+            "RM Loading",
+            "New Operator",
+            "Operator on leave / Permission",
+            "Setting",
+            "No manpower",
+            "Trial",
+            "startup",
+            "molding change",
+            "other",
+        }
+
+        for doc in docs:
+            # operator_name may be stored as a single string in older records
+            try:
+                if isinstance(doc.operator_name, str):
+                    doc.operator_name = [doc.operator_name]
+                elif doc.operator_name is None:
+                    doc.operator_name = []
+            except Exception:
+                doc.operator_name = []
+
+            # sanitize downtime codes in entries to ensure response schema accepts them
+            for e in doc.entries:
+                try:
+                    e.downtime_code = HourlyProductionService._canonicalize_downtime(e.downtime_code)
+                except Exception:
+                    e.downtime_code = "Other"
+
+            # expose MongoDB id as `_id` string for API consumers
+            try:
+                doc._id = str(doc.id)
+            except Exception:
+                doc._id = None
+
+        if shift_name:
             for doc in docs:
-                filtered = doc.entries
-                
-                if shift_name:
-                    filtered = [e for e in filtered if e.shift_name == shift_name]
-                
-                if status:
-                    filtered = [e for e in filtered if e.status == status]
-                
+                filtered = [e for e in doc.entries if e.shift_name == shift_name]
                 doc.entries = filtered
         
         logger.info(
             f"Retrieved {len(docs)} documents for date {date} "
-            f"(doc_no={doc_no}, shift_name={shift_name}, status={status})"
+            f"(shift_name={shift_name})"
         )
-        
-        return docs
+
+        # Convert Beanie documents to plain dicts and inject `_id` for API
+        results = []
+        for doc in docs:
+            try:
+                data = doc.model_dump() if hasattr(doc, "model_dump") else doc.dict()
+            except Exception:
+                # fallback: attempt to build minimal dict
+                data = {
+                    "date": getattr(doc, "date", None),
+                    "doc_no": getattr(doc, "doc_no", None),
+                    "created_at": getattr(doc, "created_at", None),
+                }
+
+            data["_id"] = str(getattr(doc, "id", getattr(doc, "_id", None)))
+            results.append(data)
+
+        return results

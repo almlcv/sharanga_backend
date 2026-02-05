@@ -9,6 +9,17 @@ class PartConfigBase(BaseModel):
     part_number: str = Field(..., description="Item code.")
     machine: Optional[str] = Field(None, description="Machine assigned (e.g., 120T).")
     rm_mb: Optional[List[str]] = Field(None, description="Raw Material and Master Batch codes")
+    cycle_time: Optional[float] = Field(None, description="Typical cycle time in seconds.")
+    part_weight: Optional[float] = Field(None, description="Net part weight in grams.")
+    runner_weight: Optional[float] = Field(None, description="Runner weight in grams.")
+    cavity: Optional[int] = Field(None, ge=1, le=8, description="Cavity count.")
+    
+    bin_capacity: Optional[int] = Field(
+        None, 
+        ge=1, 
+        description="Standard quantity of parts per bin. Used to automate bin transfers."
+    )
+
 
 
 class PartConfigCreate(PartConfigBase):
@@ -29,7 +40,11 @@ class PartConfigCreate(PartConfigBase):
                 "machine": "120T",
                 "part_description": "ALTROZ BRACKET-D",
                 "part_number": "10077-7R05S",
-                "rm_mb": ["PP TF 30% Black"]
+                "rm_mb": ["PP TF 30% Black"],
+                "cycle_time": 12.5,
+                "part_weight": 45.3,
+                "runner_weight": 2.5,
+                "cavity": 4
             }
         }
     )
@@ -44,6 +59,12 @@ class PartConfigUpdate(BaseModel):
     
     # Allows manual override of generated variants if needed
     variations: Optional[List[str]] = None
+    cycle_time: Optional[float] = None
+    part_weight: Optional[float] = None
+    runner_weight: Optional[float] = None
+    cavity: Optional[int] = Field(None, ge=1, le=8)
+
+    bin_capacity: Optional[int] = Field(None, ge=1)
 
 
 class PartConfigResponse(PartConfigBase):

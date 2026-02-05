@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class BinInventorySchema(BaseModel):
@@ -17,7 +17,7 @@ class FGStockResponse(BaseModel):
     
     opening_stock: int
     production_added: int
-    manual_adjustment: int
+    inspection_qty: int
     dispatched: int
     closing_stock: int
     
@@ -38,7 +38,7 @@ class ManualStockAdjustmentRequest(BaseModel):
     """Manual stock adjustment (add or subtract)"""
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     variant_name: str
-    adjustment_qty: int = Field(..., description="Positive to add, negative to subtract")
+    inspection_qty: int = Field(..., description="Positive to add, negative to subtract")
     remarks: str = Field(..., min_length=5, description="Reason for adjustment")
 
 
@@ -61,7 +61,7 @@ class DispatchRequest(BaseModel):
         description="Automatically move bins from RABS to IJL"
     )
     
-    @validator('dispatched_qty')
+    @field_validator('dispatched_qty')
     def validate_positive(cls, v):
         if v <= 0:
             raise ValueError("Dispatched quantity must be positive")

@@ -15,7 +15,27 @@ class PartConfiguration(Document):
     # Requested Fields
     machine: Optional[str] = Field(None, description="Machine assigned (e.g., 120T)")
     rm_mb: Optional[List[str]] = Field(None, description="List of Raw Material (RM) and Master Batch (MB) codes")
-    
+    cycle_time: Optional[float] = Field(
+        None,
+        description="Typical cycle time in seconds for the part"
+    )
+    part_weight: Optional[float] = Field(
+        None,
+        description="Net part weight in grams"
+    )
+    runner_weight: Optional[float] = Field(
+        None,
+        description="Runner weight in grams"
+    )
+    cavity: Optional[int] = Field(
+        None,
+        description="Cavity count (1-8)."
+    )
+    bin_capacity: Optional[int] = Field(
+        None, 
+        ge=1, 
+        description="Standard quantity of parts per bin."
+    )
     # Dynamic Fields
     variations: List[str] = Field(default_factory=list, description="List of generated variants (e.g., RH/LH)")
 

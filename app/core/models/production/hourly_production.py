@@ -32,6 +32,27 @@ EntryStatus = Literal[
     "FINAL"
 ]
 
+# -----------------------------
+# Downtime Codes
+# -----------------------------
+DowntimeCode = Literal[
+    "M/C BD (Machine Breakdown)",
+    "Tool BD",
+    "Power failure",
+    "Quality issue",
+    "Material shortage",
+    "MC/Tool Maintenance",
+    "RM Loading",
+    "New Operator",
+    "Operator on leave / Permission",
+    "Setting",
+    "No manpower",
+    "Trial",
+    "startup",
+    "molding change",
+    "other",
+]
+
 
 # -----------------------------
 # Signature & Approval Records
@@ -102,6 +123,7 @@ class HourlyProductionEntry(BaseModel):
 
     # ---- Rejection & Downtime ----
     rejection_reason: Optional[str] = None
+    # Allow any string in the DB (legacy codes may exist). API schemas validate allowed codes.
     downtime_code: Optional[str] = None
     downtime_from: Optional[str] = None
     downtime_to: Optional[str] = None
@@ -129,7 +151,7 @@ class HourlyProductionDocument(Document):
     
     # ---- Primary Identity ----
     date: str
-    doc_no: str
+    doc_no: str = Field(default="RI/PRD/R/70A", description="Fixed document number assigned on initialization")
     created_at: datetime = Field(default_factory=lambda: datetime.now(IST))
     
     # ---- DOCUMENT STATUS (GATE) ----
@@ -137,12 +159,14 @@ class HourlyProductionDocument(Document):
     document_approval: Optional[DocumentApprovalRecord] = None
 
     # ---- Side (LH or RH) ----
-    side: Literal["LH", "RH"]
+    # Optional: some parts are single-sided and have no side value
+    side: Optional[Literal["LH", "RH"]] = None
 
     # ---- Identification & General Info ----
     part_number: str
     part_description: Optional[str] = None
-    operator_name: Optional[str] = None
+    # Accept either a list of names or a legacy single string in stored documents
+    operator_name: Optional[list | str] = Field(default_factory=list, description="One or more operator names")
     customer_name: Optional[str] = None
 
     # ---- Technical ----
@@ -175,10 +199,8 @@ class HourlyProductionDocument(Document):
 
     class Settings:
         name = "hourly_production_documents"
-        
-        # Optimized indexes for common query patterns
+        # Indexes
         indexes = [
-            [("date", ASCENDING), ("doc_no", ASCENDING)],
+            [("date", ASCENDING)],
             [("date", ASCENDING), ("part_description", ASCENDING)],
-            [("date", ASCENDING), ("document_status", ASCENDING), ("part_description", ASCENDING), ("side", ASCENDING)],
         ]

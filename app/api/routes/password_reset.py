@@ -1,9 +1,9 @@
-from fastapi import APIRouter, status, Depends, HTTPException
+from fastapi import APIRouter, status, Depends
 from app.core.schemas.password_reset import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
-    VerifyOTPRequest,
-    VerifyOTPResponse,
+    # VerifyOTPRequest,
+    # VerifyOTPResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
     ChangePasswordRequest,
@@ -69,30 +69,30 @@ async def forgot_password(request: ForgotPasswordRequest):
     )
 
 
-@router.post(
-    "/verify-reset-otp",
-    response_model=VerifyOTPResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Step 2: Verify OTP",
-    description="""
-    Verifies the OTP sent to user's email.
+# @router.post(
+#     "/verify-reset-otp",
+#     response_model=VerifyOTPResponse,
+#     status_code=status.HTTP_200_OK,
+#     summary="Step 2: Verify OTP",
+#     description="""
+#     Verifies the OTP sent to user's email.
     
-    **Validation:**
-    - OTP must be 6 digits
-    - OTP must not be expired (10 min validity)
-    - Maximum 3 verification attempts
-    - OTP can only be used once
-    """
-)
-async def verify_otp(request: VerifyOTPRequest):
-    """Verify OTP before password reset"""
+#     **Validation:**
+#     - OTP must be 6 digits
+#     - OTP must not be expired (10 min validity)
+#     - Maximum 3 verification attempts
+#     - OTP can only be used once
+#     """
+# )
+# async def verify_otp(request: VerifyOTPRequest):
+#     """Verify OTP before password reset"""
     
-    # Verify OTP
-    await OTPService.verify_otp(request.identifier, request.otp)
+#     # Verify OTP
+#     await OTPService.verify_otp(request.identifier, request.otp)
     
-    return VerifyOTPResponse(
-        message="OTP verified successfully. You can now reset your password."
-    )
+#     return VerifyOTPResponse(
+#         message="OTP verified successfully. You can now reset your password."
+#     )
 
 
 @router.post(

@@ -1,6 +1,6 @@
 from typing import List, Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
 
 # -----------------------------
@@ -18,6 +18,27 @@ EntryStatus = Literal[
     "DRAFT",
     "SUBMITTED",
     "FINAL"
+]
+
+# -----------------------------
+# Downtime Codes
+# -----------------------------
+DowntimeCode = Literal[
+    "M/C BD",
+    "Tool BD",
+    "Power failure",
+    "Quality issue",
+    "Material shortage",
+    "MC/Tool Maintenance",
+    "RM Loading",
+    "New Operator",
+    "Operator on leave / Permission",
+    "Setting",
+    "No manpower",
+    "Trial",
+    "Startup",
+    "Mold change",
+    "Other",
 ]
 
 
@@ -48,7 +69,7 @@ class HourlyProductionEntryInput(BaseModel):
     rejected_qty: int = Field(0, ge=0, description="Rejected quantity")
 
     # Downtime
-    downtime_code: Optional[str] = Field(None, description="Downtime reason code")
+    downtime_code: Optional[DowntimeCode] = Field(None, description="Downtime reason code")
     downtime_from: Optional[str] = Field(None, description="Downtime start time (HH:MM)")
     downtime_to: Optional[str] = Field(None, description="Downtime end time (HH:MM)")
 
@@ -58,7 +79,7 @@ class HourlyProductionEntryInput(BaseModel):
     # Manual weight entry
     lumps_kgs: float = Field(0, ge=0, description="Lumps weight in kg")
 
-    @validator("time_slot")
+    @field_validator("time_slot")
     def validate_time_slot(cls, v):
         """Validate time slot format HH:MM-HH:MM"""
         if not isinstance(v, str):
@@ -76,16 +97,18 @@ class HourlyProductionEntryInput(BaseModel):
         except ValueError as e:
             raise ValueError(f"Time slot must be in HH:MM-HH:MM format. Error: {e}")
 
-    @validator("rejected_qty")
-    def validate_quantities_sum(cls, rejected_qty, values):
+    @field_validator("rejected_qty", mode="after")
+    def validate_quantities_sum(cls, rejected_qty, info: ValidationInfo):
         """
         Validate that ok_qty + rejected_qty <= actual_qty.
         
         This runs after all previous fields are validated.
         """
+        values = info.data or {}
+
         if "actual_qty" not in values or "ok_qty" not in values:
             return rejected_qty
-        
+
         actual = values["actual_qty"]
         ok = values["ok_qty"]
         
@@ -110,7 +133,7 @@ class HourlyProductionEntryInput(BaseModel):
         
         return rejected_qty
     
-    @validator("downtime_from", "downtime_to")
+    @field_validator("downtime_from", "downtime_to")
     def validate_downtime_format(cls, v):
         """Validate downtime time format if provided"""
         if v is None:
@@ -154,7 +177,7 @@ class HourlyProductionEntryResponse(BaseModel):
     ok_qty: int
     rejected_qty: int
 
-    downtime_code: Optional[str]
+    downtime_code: Optional[DowntimeCode]
     downtime_from: Optional[str]
     downtime_to: Optional[str]
     downtime_minutes: float
@@ -177,15 +200,16 @@ class InitializeDocumentRequest(BaseModel):
     """Request schema for initializing a new document."""
     
     date: str = Field(..., example="2026-01-20", description="Production date (YYYY-MM-DD)")
-    doc_no: str = Field(..., example="DOC-2026-001", description="Unique document number")
+    # `doc_no` is assigned automatically on initialization and is fixed for all documents.
 
     # Side
-    side: Literal["LH", "RH"] = Field(..., example="LH", description="Side: Left Hand or Right Hand")
+        # Optional side: some parts are single-sided and do not have a side
+    side: Optional[Literal["LH", "RH"]] = None
 
     # Part info
     part_number: str = Field(..., description="Part number")
     part_description: Optional[str] = Field(None, description="Part description")
-    operator_name: Optional[str] = Field(None, description="Operator name")
+    operator_name: List[str] = Field(..., description="One or more operator names")
     customer_name: Optional[str] = Field(None, description="Customer name")
 
     # Technical
@@ -202,7 +226,7 @@ class InitializeDocumentRequest(BaseModel):
     lot_no: Optional[str] = Field(None, description="Lot number")
     lot_no_production: Optional[str] = Field(None, description="Production lot number")
     
-    @validator("date")
+    @field_validator("date")
     def validate_date_format(cls, v):
         """Validate date format"""
         try:
@@ -211,6 +235,14 @@ class InitializeDocumentRequest(BaseModel):
         except ValueError:
             raise ValueError("Date must be in YYYY-MM-DD format")
 
+    @field_validator("operator_name")
+    def validate_operator_list(cls, v):
+        if not isinstance(v, list):
+            raise ValueError("operator_name must be a list of names")
+        if len(v) < 1:
+            raise ValueError("operator_name must contain at least one name")
+        return v
+
 
 # -----------------------------
 # Submit Hourly Data
@@ -218,19 +250,42 @@ class InitializeDocumentRequest(BaseModel):
 
 class SubmitHourlyDataRequest(BaseModel):
     """Request schema for submitting hourly entries."""
-    
-    doc_no: str = Field(..., description="Document number")
+
+    # Only accept MongoDB document id as identifier
+    document_id: str = Field(..., description="MongoDB _id of the target document")
+
     entries: List[HourlyProductionEntryInput] = Field(
         ..., 
         min_items=1,
         description="List of hourly entries to submit")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "document_id": "603d2f9f8b1e4a6f4d3e2c1b",
+                "entries": [
+                    {
+                        "time_slot": "08:00-09:00",
+                        "plan_qty": 100,
+                        "actual_qty": 95,
+                        "ok_qty": 93,
+                        "rejected_qty": 2,
+                        "downtime_code": "M/C BD",
+                        "downtime_from": "08:15",
+                        "downtime_to": "08:30",
+                        "rejection_reason": "Surface defect",
+                        "lumps_kgs": 0.5
+                    }
+                ]
+            }
+        }
     
 #-----------------------------
 #Update Document
 #-----------------------------
 class UpdateDocumentDetailsRequest(BaseModel):
     """Request schema for updating document details."""
-    doc_no: str = Field(..., description="Document number")
+    document_id: str = Field(..., description="MongoDB _id of the document to update")
     
     # Manual Total Entries
     total_lumps_kgs: Optional[float] = Field(
@@ -249,7 +304,7 @@ class UpdateDocumentDetailsRequest(BaseModel):
 #-----------------------------
 class SignDocumentRequest(BaseModel):
     """Request schema for signing a document."""
-    doc_no: str = Field(..., description="Document number")
+    document_id: str = Field(..., description="MongoDB _id of the document to sign")
     signature_type: Literal["OPERATOR", "PRODUCTION_HEAD"] = Field(
         ...,
         description="Type of signature"
@@ -263,7 +318,7 @@ class ReviewDocumentStatusRequest(BaseModel):
     Admin can approve PENDING_APPROVAL documents to make them OPEN,
     or reject them to make them BLOCKED.
     """
-    doc_no: str = Field(..., example="DOC-2026-018-001", description="Document number")
+    document_id: str = Field(..., example="603d2f9f8b1e4a6f4d3e2c1b", description="MongoDB _id of the document")
     action: Literal["APPROVE", "REJECT"] = Field(..., example="APPROVE", description="Action to take")
     remarks: Optional[str] = Field(
         None, 
@@ -274,7 +329,7 @@ class ReviewDocumentStatusRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "doc_no": "DOC-2026-018-001",
+                "document_id": "603d2f9f8b1e4a6f4d3e2c1b",
                 "action": "APPROVE",
                 "remarks": "Machine breakdown caused delay in document creation"
             }
@@ -285,15 +340,15 @@ class ReviewDocumentStatusRequest(BaseModel):
 #-----------------------------
 class FinalizeDocumentRequest(BaseModel):
     """Request schema for finalizing a document."""
-    doc_no: str = Field(..., description="Document number")
+    document_id: str = Field(..., description="MongoDB _id of the document")
 
 #-----------------------------
 #Full Document Response
 #-----------------------------
 class HourlyProductionDocumentResponse(BaseModel):
     """Complete response schema for hourly production document."""
+    id: Optional[str] = Field(None, alias="_id")
     date: str
-    doc_no: str
     created_at: datetime
 
     # DOCUMENT STATUS
@@ -301,12 +356,13 @@ class HourlyProductionDocumentResponse(BaseModel):
     document_approval: Optional[DocumentApprovalRecordSchema]
 
     # Side
-    side: Literal["LH", "RH"]
+    # Optional: support single-sided parts with no side value
+    side: Optional[Literal["LH", "RH"]] = None
 
     # Identity
     part_number: str
     part_description: Optional[str]
-    operator_name: Optional[str]
+    operator_name: List[str]
     customer_name: Optional[str]
 
     # Technical

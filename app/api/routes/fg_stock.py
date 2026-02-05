@@ -158,12 +158,12 @@ async def transfer_bins(
 # ==================== UTILITY ====================
 
 @router.post(
-    "/sync-from-hourly/{doc_no}",
+    "/sync-from-hourly/{doc_id}",
     response_model=dict,
-    summary="Manual Sync from Hourly Production"
+    summary="Manual Sync from Hourly Production (by _id)"
 )
 async def sync_from_hourly_production(
-    doc_no: str = Path(..., description="Hourly production document number"),
+    doc_id: str = Path(..., description="Hourly production document _id (MongoDB ObjectId string)"),
     current_user: dict = Depends(require_roles("Admin"))
 ):
     """
@@ -174,18 +174,22 @@ async def sync_from_hourly_production(
     """
     from app.core.models.production.hourly_production import HourlyProductionDocument
     
-    doc = await HourlyProductionDocument.find_one(
-        HourlyProductionDocument.doc_no == doc_no
-    )
-    
+    # Try to fetch by ObjectId `_id` first
+    try:
+        doc = await HourlyProductionDocument.get(doc_id)
+    except Exception:
+        doc = None
+
     if not doc:
-        raise HTTPException(404, f"Hourly production document '{doc_no}' not found")
+        raise HTTPException(404, f"Hourly production document with _id '{doc_id}' not found")
     
     await FGStockService.update_from_hourly_production(doc, current_user.emp_id)
     
+    part_display = f"{doc.part_description} {doc.side}" if doc.side else doc.part_description
+
     return {
-        "message": f"Successfully synced FG stock from document {doc_no}",
+        "message": f"Successfully synced FG stock from document {doc_id}",
         "date": doc.date,
-        "part": f"{doc.part_description} {doc.side}",
+        "part": part_display,
         "production_qty": doc.totals.total_ok_qty
     }

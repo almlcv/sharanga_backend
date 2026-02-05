@@ -58,6 +58,7 @@ class DepartmentEnum(str, Enum):
     maintenance = "Maintenance"
     management = "Management"
     it_support = "IT Support"
+    accountant = "Accountant"
 
 class DesignationEnum(str, Enum):
     manager = "Manager"
@@ -68,6 +69,7 @@ class DesignationEnum(str, Enum):
     supervisor = "Supervisor"
     intern = "Intern"
     executive = "Executive"
+    Accountant_Executive = "Accountant Executive"
 
 # --- Sub-models ---
 class UserDocuments(BaseModel):

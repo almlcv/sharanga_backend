@@ -12,19 +12,19 @@ class ForgotPasswordRequest(BaseModel):
         examples=["user@example.com", "9876543210"]
     )
 
-class VerifyOTPRequest(BaseModel):
-    """Request to verify OTP"""
-    identifier: str = Field(
-        ..., 
-        description="Email address or phone number used in forgot password request"
-    )
-    otp: str = Field(
-        ..., 
-        min_length=6, 
-        max_length=6,
-        pattern=r"^\d{6}$",
-        description="6-digit OTP received via email"
-    )
+# class VerifyOTPRequest(BaseModel):
+#     """Request to verify OTP"""
+#     identifier: str = Field(
+#         ..., 
+#         description="Email address or phone number used in forgot password request"
+#     )
+#     otp: str = Field(
+#         ..., 
+#         min_length=6, 
+#         max_length=6,
+#         pattern=r"^\d{6}$",
+#         description="6-digit OTP received via email"
+#     )
 
 class ResetPasswordRequest(BaseModel):
     """Request to reset password with OTP"""
@@ -82,13 +82,13 @@ class ForgotPasswordResponse(BaseModel):
         examples=["u***r@example.com"]
     )
 
-class VerifyOTPResponse(BaseModel):
-    """Response after OTP verification"""
-    message: str = Field(
-        ..., 
-        description="Verification status",
-        examples=["OTP verified successfully. You can now reset your password."]
-    )
+# class VerifyOTPResponse(BaseModel):
+#     """Response after OTP verification"""
+#     message: str = Field(
+#         ..., 
+#         description="Verification status",
+#         examples=["OTP verified successfully. You can now reset your password."]
+#     )
 
 class ResetPasswordResponse(BaseModel):
     """Response after successful password reset"""

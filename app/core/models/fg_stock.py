@@ -15,7 +15,7 @@ class BinInventory(BaseModel):
 class StockTransaction(BaseModel):
     """Individual stock transaction for audit trail"""
     timestamp: datetime = Field(default_factory=get_ist_now)
-    transaction_type: str  # "PRODUCTION", "DISPATCH", "MANUAL_ADJUSTMENT", "BIN_TRANSFER"
+    transaction_type: str  # "PRODUCTION", "DISPATCH", "INSPECTION_QTY", "BIN_TRANSFER"
     quantity_change: int
     bins_change: Optional[Dict[str, int]] = None
     user_id: Optional[str] = None
@@ -31,7 +31,7 @@ class FGStockDocument(Document):
     variant_name: str = Field(..., description="e.g., 'ALTROZ BRACKET-D LH'")
     part_number: str
     part_description: str  # Without LH/RH
-    side: str  # "LH" or "RH"
+    side: Optional[str] = None  # "LH" or "RH"; optional for single-sided parts
     
     # Date components for querying
     year: int
@@ -41,7 +41,7 @@ class FGStockDocument(Document):
     # Stock Quantities
     opening_stock: int = Field(default=0, ge=0)
     production_added: int = Field(default=0, ge=0)
-    manual_adjustment: int = Field(default=0)  # Can be negative
+    inspection_qty: int = Field(default=0, ge=0)
     dispatched: int = Field(default=0, ge=0)
     closing_stock: int = Field(default=0)
     
@@ -73,8 +73,8 @@ class FGStockDocument(Document):
         """Recalculate closing stock from components"""
         self.closing_stock = (
             self.opening_stock + 
-            self.production_added + 
-            self.manual_adjustment - 
+            self.production_added - 
+            self.inspection_qty - 
             self.dispatched
         )
         self.updated_at = get_ist_now()

@@ -1,6 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query, status
 
 from app.core.schemas.production.hourly_production import (
     InitializeDocumentRequest,
@@ -38,7 +37,7 @@ router = APIRouter(
     
     **Business Rules:**
     - Document number must be unique for the given date
-    - Must specify side: LH or RH
+    - Side is optional: omit for single-sided parts or provide `LH`/`RH` when applicable
     - Single `part_weight` field (no more LH/RH confusion)
     - Once created with OPEN status, hourly entries can be submitted immediately
     - If PENDING_APPROVAL, admin must approve before data entry
@@ -394,9 +393,7 @@ async def get_pending_documents(
     
     **Query Parameters:**
     - `date` (required): Production date (YYYY-MM-DD)
-    - `doc_no` (optional): Specific document number
     - `shift_name` (optional): Filter entries by shift
-    - `status` (optional): Filter entries by status
     
     **Document Status Values:**
     - `OPEN`: Ready for data entry
@@ -406,9 +403,7 @@ async def get_pending_documents(
     
     **Use Cases:**
     - Get all documents for a date: `?date=2026-01-20`
-    - Get specific document: `?date=2026-01-20&doc_no=DOC-2026-001`
     - Get morning shift data: `?date=2026-01-20&shift_name=Morning`
-    - Get documents pending approval: `?date=2026-01-20&document_status=PENDING_APPROVAL`
     """,
     responses={
         200: {
@@ -433,15 +428,11 @@ async def get_pending_documents(
 )
 async def get_documents(
     date: str = Query(..., description="Production date (YYYY-MM-DD)"),
-    doc_no: Optional[str] = Query(None, description="Document number"),
     shift_name: Optional[str] = Query(None, description="Shift name filter"),
-    status: Optional[str] = Query(None, description="Entry status filter"),
     current_user: dict = Depends(get_current_user)
 ):
     """Retrieve production documents with optional filtering"""
     return await HourlyProductionService.get_documents(
         date=date,
-        doc_no=doc_no,
         shift_name=shift_name,
-        status=status
     )

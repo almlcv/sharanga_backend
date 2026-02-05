@@ -1,6 +1,6 @@
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
-from typing import List
+from datetime import datetime
 import logging
 
 from app.core.setting import config
@@ -22,7 +22,7 @@ conf = ConnectionConfig(
 )
 
 fast_mail = FastMail(conf)
-
+current_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
 
 class EmailService:
     """Service for sending emails"""
@@ -119,7 +119,7 @@ class EmailService:
                     <div class="info-box">
                         <strong>Change Details:</strong><br>
                         Changed by: {changed_by}<br>
-                        Date & Time: {config.PROJECT_NAME} will show your local time
+                        Date & Time: {current_time}
                     </div>
                     
                     <p>You can now login with your new password.</p>
