@@ -668,6 +668,10 @@ class HourlyProductionService:
         Finalize document to prevent further edits.
         
         Authorization: Restricted to 'Admin' or 'Production Head' only.
+        
+        AUTOMATIC TRIGGER:
+        Upon finalization, this method AUTOMATICALLY calls FGStockService.
+        No manual sync is required.
         """
         # 1. Fetch Document (prefer document_id)
         doc = None
@@ -686,7 +690,7 @@ class HourlyProductionService:
         
         # ============================================================
         # 2. AUTHORIZATION GATE (Admin or Production Head only)
-
+        # ============================================================
         user_role = getattr(current_user, 'role', None)
         user_role2 = getattr(current_user, 'role2', None)
         
@@ -731,6 +735,23 @@ class HourlyProductionService:
             f"Document {doc.doc_no} finalized by {current_user.full_name} "
             f"({current_user.emp_id}). {finalized_count} entries marked as FINAL."
         )
+
+        # ============================================================
+        # 5. AUTOMATIC FG STOCK UPDATE (NO MANUAL SYNC NEEDED)
+        # ============================================================
+        try:
+            # This triggers automatically. The user does not need to click a separate sync button.
+            await FGStockService.update_from_hourly_production(
+                doc, 
+                current_user.emp_id
+            )
+            logger.info(f"✅ AUTO-SYNC: FG Stock updated successfully for document {doc.doc_no}")
+        except Exception as e:
+            # We log the error but don't fail the finalization, 
+            # but the system should alert admins that stock might be out of sync.
+            logger.error(f"❌ AUTO-SYNC FAILED: Failed to update FG Stock for {doc.doc_no}: {e}", exc_info=True)
+            # You could optionally raise an HTTPException here if you want to block finalization on stock error
+            # raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Finalized, but Stock Sync failed. Contact Admin.")
         
         return doc
 

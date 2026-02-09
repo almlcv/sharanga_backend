@@ -1,0 +1,157 @@
+# Alert Rules for Factory Management System
+groups:
+  # API Health Alerts
+  - name: api_health
+    interval: 30s
+    rules:
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Slow Response Times
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow API response times"
+          description: "95th percentile response time is {{ $value }}s for {{ $labels.endpoint }}"
+
+      # High Request Volume
+      - alert: HighRequestVolume
+        expr: sum(rate(http_requests_total[5m])) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request volume detected"
+          description: "Request rate is {{ $value }} req/s (threshold: 100 req/s)"
+
+  # Database Alerts
+  - name: database_health
+    interval: 30s
+    rules:
+      # High DB Operation Errors
+      - alert: HighDatabaseErrors
+        expr: |
+          (
+            sum(rate(db_operations_total{status="error"}[5m]))
+            /
+            sum(rate(db_operations_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High database error rate"
+          description: "Database error rate is {{ $value | humanizePercentage }}"
+
+      # Slow Database Operations
+      - alert: SlowDatabaseOperations
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(db_operation_duration_seconds_bucket[5m])) by (le, operation_type, collection)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow database operations"
+          description: "95th percentile DB operation time is {{ $value }}s"
+
+  # Authentication Alerts
+  - name: authentication_security
+    interval: 30s
+    rules:
+      # High Failed Login Rate
+      - alert: HighFailedLoginRate
+        expr: |
+          sum(rate(auth_attempts_total{status="failed"}[5m])) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High failed login attempts"
+          description: "Failed login rate is {{ $value }} attempts/s (possible brute force attack)"
+
+  # System Resource Alerts
+  - name: system_resources
+    interval: 30s
+    rules:
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value | humanize }}%"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanize }}%"
+
+      # Low Disk Space
+      - alert: LowDiskSpace
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is {{ $value | humanize }}% available"
+
+  # Application-Specific Alerts
+  - name: application_metrics
+    interval: 30s
+    rules:
+      # Production Entry Issues
+      - alert: HighRejectedProductionEntries
+        expr: |
+          sum(rate(production_entries_total{status="rejected"}[10m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High production entry rejection rate"
+          description: "Production entry rejection rate is {{ $value }} entries/s"
+
+      # Cache Performance
+      - alert: LowCacheHitRate
+        expr: |
+          (
+            sum(rate(cache_operations_total{operation="get", status="hit"}[5m]))
+            /
+            sum(rate(cache_operations_total{operation="get"}[5m]))
+          ) < 0.7
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 70%)"

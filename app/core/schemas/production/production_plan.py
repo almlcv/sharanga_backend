@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Optional, Dict, List
 
 class MonthlyPlanRequest(BaseModel):
     """
@@ -37,3 +37,67 @@ class MonthlyPlanResponse(BaseModel):
     item_description: str
     part_number: Optional[str] = None # Fetched from PartConfiguration
     upserted_id: Optional[str] = None
+
+
+# ----------------------------- Daily Production Plan -----------------------------
+
+class DailyPlanVariantResponse(BaseModel):
+    """One variant's daily plan for a month (Excel row equivalent)."""
+    variant_name: str
+    part_description: str
+    monthly_schedule: Optional[int] = None
+    daily_targets: Dict[str, int] = Field(default_factory=dict)  # "YYYY-MM-DD" -> qty
+    total_planned: int = 0  # sum of daily_targets
+
+class DailyPlanMonthResponse(BaseModel):
+    """Full daily plan for a month (all variants, like Excel sheet)."""
+    month: str  # YYYY-MM
+    variants: List[DailyPlanVariantResponse]
+
+
+class SetDailyPlanRequest(BaseModel):
+    """Set or update daily targets for one variant in a month."""
+    year: str = Field(..., description="Year e.g. '2026'")
+    month: str = Field(..., description="Month e.g. '01' or '1'")
+    variant_name: str = Field(..., description="e.g. 'ALTROZ INNER LENS LH'")
+    daily_targets: Dict[str, int] = Field(..., description="Map of date YYYY-MM-DD to planned qty")
+
+    @field_validator('year')
+    @classmethod
+    def validate_year(cls, v):
+        if len(v) != 4 or not v.isdigit():
+            raise ValueError("Year must be 4-digit string")
+        return v
+
+    @field_validator('month')
+    @classmethod
+    def validate_month(cls, v):
+        try:
+            if 1 <= int(v) <= 12:
+                return v
+        except ValueError:
+            pass
+        raise ValueError("Month must be 1-12")
+
+
+class GenerateDailyPlanRequest(BaseModel):
+    """Generate daily plan from monthly plans (spread schedule over working days)."""
+    year: str = Field(..., description="Year e.g. '2026'")
+    month: str = Field(..., description="Month e.g. '01' or '1'")
+
+    @field_validator('year')
+    @classmethod
+    def validate_year(cls, v):
+        if len(v) != 4 or not v.isdigit():
+            raise ValueError("Year must be 4-digit string")
+        return v
+
+    @field_validator('month')
+    @classmethod
+    def validate_month(cls, v):
+        try:
+            if 1 <= int(v) <= 12:
+                return v
+        except ValueError:
+            pass
+        raise ValueError("Month must be 1-12")

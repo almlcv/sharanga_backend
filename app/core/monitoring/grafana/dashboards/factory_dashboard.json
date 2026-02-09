@@ -1,0 +1,233 @@
+{
+  "dashboard": {
+    "title": "Factory Management System - Overview",
+    "tags": ["factory", "production", "api"],
+    "timezone": "Asia/Kolkata",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "type": "graph",
+        "title": "Request Rate (req/s)",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[5m])) by (method)",
+            "legendFormat": "{{method}}",
+            "datasource": "Prometheus"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "type": "graph",
+        "title": "Response Time (95th percentile)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint))",
+            "legendFormat": "{{endpoint}}",
+            "datasource": "Prometheus"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Duration"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8},
+        "type": "singlestat",
+        "title": "Total Requests (5m)",
+        "targets": [
+          {
+            "expr": "sum(increase(http_requests_total[5m]))",
+            "datasource": "Prometheus"
+          }
+        ],
+        "format": "short",
+        "valueName": "current"
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 8},
+        "type": "singlestat",
+        "title": "Error Rate (%)",
+        "targets": [
+          {
+            "expr": "(sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))) * 100",
+            "datasource": "Prometheus"
+          }
+        ],
+        "format": "percent",
+        "valueName": "current",
+        "thresholds": "5,10",
+        "colors": ["#299c46", "#e0b400", "#d44a3a"]
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 8},
+        "type": "singlestat",
+        "title": "Avg Response Time (ms)",
+        "targets": [
+          {
+            "expr": "sum(rate(http_request_duration_seconds_sum[5m])) / sum(rate(http_request_duration_seconds_count[5m])) * 1000",
+            "datasource": "Prometheus"
+          }
+        ],
+        "format": "ms",
+        "valueName": "current"
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 8},
+        "type": "singlestat",
+        "title": "Active Requests",
+        "targets": [
+          {
+            "expr": "sum(http_requests_in_progress)",
+            "datasource": "Prometheus"
+          }
+        ],
+        "format": "short",
+        "valueName": "current"
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+        "type": "graph",
+        "title": "HTTP Status Codes",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[5m])) by (status_code)",
+            "legendFormat": "{{status_code}}",
+            "datasource": "Prometheus"
+          }
+        ],
+        "stack": true,
+        "yaxes": [
+          {"format": "reqps"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+        "type": "graph",
+        "title": "Database Operations",
+        "targets": [
+          {
+            "expr": "sum(rate(db_operations_total[5m])) by (operation_type)",
+            "legendFormat": "{{operation_type}}",
+            "datasource": "Prometheus"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 9,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+        "type": "graph",
+        "title": "Authentication Attempts",
+        "targets": [
+          {
+            "expr": "sum(rate(auth_attempts_total[5m])) by (status)",
+            "legendFormat": "{{status}}",
+            "datasource": "Prometheus"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 10,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
+        "type": "graph",
+        "title": "Production Entries",
+        "targets": [
+          {
+            "expr": "sum(rate(production_entries_total[5m])) by (status)",
+            "legendFormat": "{{status}}",
+            "datasource": "Prometheus"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 11,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+        "type": "graph",
+        "title": "CPU Usage (%)",
+        "targets": [
+          {
+            "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "CPU Usage",
+            "datasource": "Prometheus"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "max": 100, "min": 0},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 12,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+        "type": "graph",
+        "title": "Memory Usage (%)",
+        "targets": [
+          {
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "Memory Usage",
+            "datasource": "Prometheus"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "max": 100, "min": 0},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 13,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 38},
+        "type": "table",
+        "title": "Top Endpoints by Request Count",
+        "targets": [
+          {
+            "expr": "topk(10, sum(rate(http_requests_total[5m])) by (endpoint, method))",
+            "format": "table",
+            "instant": true,
+            "datasource": "Prometheus"
+          }
+        ],
+        "styles": [
+          {
+            "pattern": "Value",
+            "type": "number",
+            "unit": "reqps",
+            "decimals": 2
+          }
+        ]
+      }
+    ]
+  }
+}

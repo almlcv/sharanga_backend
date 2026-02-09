@@ -8,6 +8,7 @@ from app.core.models.workwear import WorkwearConfig, WorkwearProfile
 from app.core.models.training import TrainingProfile, SystemTrainingLevel
 from app.core.models.parts_config import PartConfiguration
 from app.core.models.production.production_plan import MonthlyProductionPlan
+from app.core.models.production.daily_production_plan import DailyProductionPlanDocument
 from app.core.models.production.hourly_production import HourlyProductionDocument
 from app.core.models.fg_stock import FGStockDocument
 
@@ -33,6 +34,7 @@ async def connect_to_mongo():
             TrainingProfile, SystemTrainingLevel,
             PartConfiguration,
             MonthlyProductionPlan,
+            DailyProductionPlanDocument,
             HourlyProductionDocument,
             FGStockDocument,
 
