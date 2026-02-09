@@ -46,9 +46,11 @@ class ExperienceLevel(str, Enum):
     JUNIOR = "Junior (1-3 Years)"
     MID_SENIOR = "Mid-Senior (3-5 Years)"
     SENIOR = "Senior (5+ Years)"
+    MANAGEMENT = "Management"
 
 class DepartmentEnum(str, Enum):
     admin = "Admin"
+    ceo = "CEO"
     hr = "HR"
     production = "Production"
     quality_assurance = "Quality Assurance"
@@ -59,8 +61,10 @@ class DepartmentEnum(str, Enum):
     management = "Management"
     it_support = "IT Support"
     accountant = "Accountant"
+    Housekeeping = "Housekeeping"
 
 class DesignationEnum(str, Enum):
+    ceo = "CEO"
     manager = "Manager"
     senior_engineer = "Senior Engineer"
     engineer = "Engineer"
@@ -69,7 +73,10 @@ class DesignationEnum(str, Enum):
     supervisor = "Supervisor"
     intern = "Intern"
     executive = "Executive"
+    Inspector = "Inspector"
     Accountant_Executive = "Accountant Executive"
+    Office_Boy = "Office Boy"
+    production_head = "Production Head"
 
 # --- Sub-models ---
 class UserDocuments(BaseModel):

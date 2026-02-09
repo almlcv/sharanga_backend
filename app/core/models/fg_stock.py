@@ -1,30 +1,28 @@
 from app.shared.timezone import get_ist_now
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 from beanie import Document
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, DESCENDING
 
 
-class BinInventory(BaseModel):
-    """Bin tracking for RABS and IJL"""
-    rabs_bins: int = Field(default=0, ge=0, description="Bins in RABS warehouse")
-    ijl_bins: int = Field(default=0, ge=0, description="Bins ready for IJL dispatch")
-
-
 class StockTransaction(BaseModel):
     """Individual stock transaction for audit trail"""
     timestamp: datetime = Field(default_factory=get_ist_now)
-    transaction_type: str  # "PRODUCTION", "DISPATCH", "INSPECTION_QTY", "BIN_TRANSFER"
+    transaction_type: str  # "PRODUCTION", "DISPATCH", "INSPECTION_QTY"
     quantity_change: int
-    bins_change: Optional[Dict[str, int]] = None
     user_id: Optional[str] = None
     remarks: Optional[str] = None
-    reference_doc_no: Optional[str] = None  # Link to HourlyProductionDocument
+    reference_doc_no: Optional[str] = None 
 
 
 class FGStockDocument(Document):
-    """Daily FG Stock tracking per part variant (LH/RH)"""
+    """
+    Daily FG Stock tracking per part variant (LH/RH)
+    
+    SIMPLIFIED - NO BIN TRACKING
+    Matches Excel structure exactly
+    """
     
     # Primary Identity
     date: str = Field(..., description="YYYY-MM-DD")
@@ -38,16 +36,12 @@ class FGStockDocument(Document):
     month: int
     day: int
     
-    # Stock Quantities
-    opening_stock: int = Field(default=0, ge=0)
-    production_added: int = Field(default=0, ge=0)
-    inspection_qty: int = Field(default=0, ge=0)
-    dispatched: int = Field(default=0, ge=0)
-    closing_stock: int = Field(default=0)
-    
-    # Bin Tracking
-    bins_available: BinInventory = Field(default_factory=BinInventory)
-    bin_size: Optional[int] = None  # Cached from PartConfiguration
+    # Stock Quantities (EXACTLY AS IN EXCEL)
+    opening_stock: int = Field(default=0, ge=0, description="Opening stock for the day")
+    production_added: int = Field(default=0, ge=0, description="Production added today")
+    inspection_qty: int = Field(default=0, ge=0, description="Damaged/Rejected quantity")
+    dispatched: int = Field(default=0, ge=0, description="Dispatched quantity")
+    closing_stock: int = Field(default=0, description="Closing stock (can be negative in theory)")
     
     # Monthly Plan Reference
     monthly_schedule: Optional[int] = None
@@ -70,7 +64,10 @@ class FGStockDocument(Document):
         ]
     
     def recalculate_closing_stock(self):
-        """Recalculate closing stock from components"""
+        """
+        Recalculate closing stock from components
+        FORMULA: Closing = Opening + Production - Inspection - Dispatch
+        """
         self.closing_stock = (
             self.opening_stock + 
             self.production_added - 
@@ -85,14 +82,12 @@ class FGStockDocument(Document):
         quantity_change: int,
         user_id: Optional[str] = None,
         remarks: Optional[str] = None,
-        reference_doc_no: Optional[str] = None,
-        bins_change: Optional[Dict[str, int]] = None
+        reference_doc_no: Optional[str] = None
     ):
         """Add transaction to audit trail"""
         self.transactions.append(StockTransaction(
             transaction_type=transaction_type,
             quantity_change=quantity_change,
-            bins_change=bins_change,
             user_id=user_id,
             remarks=remarks,
             reference_doc_no=reference_doc_no

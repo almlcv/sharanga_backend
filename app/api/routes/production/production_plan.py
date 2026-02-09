@@ -4,13 +4,20 @@ from beanie import PydanticObjectId
 import json
 
 # App Imports
-from app.core.schemas.production.production_plan import MonthlyPlanRequest, MonthlyPlanResponse
+from app.core.schemas.production.production_plan import (
+    MonthlyPlanRequest,
+    MonthlyPlanResponse,
+    DailyPlanMonthResponse,
+    SetDailyPlanRequest,
+    GenerateDailyPlanRequest,
+)
 from app.core.models.production.production_plan import MonthlyProductionPlan
 from app.core.models.parts_config import PartConfiguration
 from app.core.schemas.auth import CurrentUser
 from app.core.auth.deps import require_roles
 from app.shared.cache_manager import refresh_monthly_plan_cache
 from app.shared.timezone import get_ist_now, IST
+from app.modules.daily_plan.daily_plan_service import DailyPlanService
 
 router = APIRouter(tags=["Production Plan"], prefix="/production/plan")
 
@@ -256,3 +263,74 @@ async def get_monthly_production_plan(
     client.setex(cache_key, ttl_seconds, json.dumps(formatted_plans))
         
     return formatted_plans
+
+
+# ==================== DAILY PRODUCTION PLAN (Excel-style) ====================
+
+@router.get(
+    "/daily",
+    response_model=DailyPlanMonthResponse,
+    summary="Get Daily Production Plan for a Month",
+)
+async def get_daily_production_plan(
+    year: str = Query(..., description="Year e.g. 2026"),
+    month: str = Query(..., description="Month e.g. 01 or 1"),
+    current_user: CurrentUser = Depends(require_roles("Admin", "Production", "Viewer")),
+):
+    """
+    Returns the daily production plan for all variants in the given month.
+    Matches Excel 'RABS INDUSTRIES - DAILY PRODUCTION' view: one row per variant, daily_targets = day-wise planned qty.
+    """
+    data = await DailyPlanService.get_daily_plan(year, month)
+    return DailyPlanMonthResponse(**data)
+
+
+@router.post(
+    "/daily/generate",
+    response_model=dict,
+    summary="Generate Daily Plan from Monthly Plans",
+)
+async def generate_daily_plan_from_monthly(
+    payload: GenerateDailyPlanRequest,
+    current_user: CurrentUser = Depends(require_roles("Admin", "Production")),
+):
+    """
+    Generates daily production plan from existing monthly schedules.
+    Spreads each part's monthly schedule evenly over working days (Sundays excluded).
+    Uses PartConfiguration.variations (LH/RH) and splits schedule per variant.
+    """
+    created = await DailyPlanService.generate_from_monthly_plans(payload.year, payload.month)
+    month_str = f"{payload.year}-{str(int(payload.month)).zfill(2)}"
+    return {
+        "message": "Daily plan generated from monthly plans",
+        "month": month_str,
+        "variants_updated": len(created),
+        "variant_names": [d.variant_name for d in created],
+    }
+
+
+@router.put(
+    "/daily",
+    response_model=dict,
+    summary="Set Daily Plan for a Variant",
+)
+async def set_daily_plan(
+    payload: SetDailyPlanRequest,
+    current_user: CurrentUser = Depends(require_roles("Admin", "Production")),
+):
+    """
+    Set or update daily planned quantities for one variant in a month.
+    daily_targets: map of date (YYYY-MM-DD) to planned quantity.
+    """
+    doc = await DailyPlanService.set_daily_plan(
+        payload.year,
+        payload.month,
+        payload.variant_name,
+        payload.daily_targets,
+    )
+    return {
+        "message": "Daily plan updated",
+        "month": doc.month,
+        "variant_name": doc.variant_name,
+        "total_planned": sum(doc.daily_targets.values()),
+    }

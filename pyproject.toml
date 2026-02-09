@@ -11,6 +11,7 @@ dependencies = [
     "beanie>=2.0.1",
     "fastapi-mail>=1.6.1",
     "fastapi[standard]>=0.128.0",
+    "gunicorn>=25.0.1",
     "motor>=3.7.1",
     "passlib>=1.7.4",
     "prometheus-client>=0.24.1",
@@ -22,4 +23,9 @@ dependencies = [
     "redis>=7.1.0",
     "typing-extensions>=4.15.0",
     "uvicorn>=0.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "openpyxl>=3.1.5",
 ]
