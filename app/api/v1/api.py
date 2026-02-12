@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
 from app.api.routes import (hr, employee, password_reset, training, workwear, shifts, auth, 
-                            parts_config, open_points, fg_stock, production_report)
-from app.api.routes.production import hourly_production, production_plan
+                            parts_config, open_points, fg_stock)
+from app.api.routes.production import hourly_production, production_plan, daily_production_plan_report
 
 api_router = APIRouter()
 
@@ -21,7 +21,7 @@ api_router.include_router(parts_config.router)
 api_router.include_router(production_plan.router)
 api_router.include_router(hourly_production.router)
 api_router.include_router(fg_stock.router)
-api_router.include_router(production_report.router)
+api_router.include_router(daily_production_plan_report.router)
 
 api_router.include_router(open_points.router)
 

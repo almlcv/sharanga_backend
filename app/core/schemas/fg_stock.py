@@ -1,30 +1,28 @@
+# app/core/schemas/fg_stock.py
+
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, field_validator
 
 
-class BinInventorySchema(BaseModel):
-    rabs_bins: int = Field(ge=0)
-    ijl_bins: int = Field(ge=0)
-
-
 class FGStockResponse(BaseModel):
+    """Response schema for FG Stock"""
+    
     date: str
     variant_name: str
     part_number: str
     part_description: str
-    side: Optional[str] 
+    side: Optional[str]
     
+    # Stock quantities
     opening_stock: int
     production_added: int
     inspection_qty: int
     dispatched: int
     closing_stock: int
     
-    bins_available: BinInventorySchema
-    bin_size: Optional[int]
-    
-    monthly_schedule: Optional[int] 
+    # Monthly plan reference
+    monthly_schedule: Optional[int]
     daily_target: Optional[int]
     variance_vs_target: Optional[int] = None
     
@@ -38,29 +36,15 @@ class ManualStockAdjustmentRequest(BaseModel):
     """Manual stock adjustment (Set Absolute Inspection Quantity)"""
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     variant_name: str
-    # Description updated to match production logic (Absolute set)
-    inspection_qty: int = Field(..., description="Set absolute inspection quantity (must be >= 0)")
+    inspection_qty: int = Field(..., ge=0, description="Set absolute inspection quantity")
     remarks: str = Field(..., min_length=5, description="Reason for adjustment")
 
 
-class ManualBinUpdateRequest(BaseModel):
-    """Manual bin inventory update"""
-    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-    variant_name: str
-    rabs_bins: Optional[int] = Field(None, ge=0)
-    ijl_bins: Optional[int] = Field(None, ge=0)
-    remarks: str
-
-
 class DispatchRequest(BaseModel):
-    """Record dispatch"""
+    """Record dispatch - SIMPLIFIED (No bin transfers)"""
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     variant_name: str
-    dispatched_qty: int = Field(..., gt=0)
-    auto_transfer_bins: bool = Field(
-        default=True, 
-        description="Automatically move bins from RABS to IJL"
-    )
+    dispatched_qty: int = Field(..., gt=0, description="Quantity to dispatch")
     
     @field_validator('dispatched_qty')
     @classmethod
@@ -68,13 +52,6 @@ class DispatchRequest(BaseModel):
         if v <= 0:
             raise ValueError("Dispatched quantity must be positive")
         return v
-
-
-class BinTransferRequest(BaseModel):
-    """Transfer bins between RABS and IJL"""
-    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
-    variant_name: str
-    bins_to_transfer: int = Field(..., gt=0, description="Number of bins to move from RABS to IJL")
 
 
 class DailyFGStockSummary(BaseModel):
@@ -85,7 +62,7 @@ class DailyFGStockSummary(BaseModel):
 
 
 class MonthlyFGStockSummary(BaseModel):
-    """Monthly summary per variant"""
+    """Monthly summary per variant (Generated dynamically from Daily data)"""
     year: int
     month: int
     variant_name: str

@@ -668,6 +668,10 @@ class HourlyProductionService:
         Finalize document to prevent further edits.
         
         Authorization: Restricted to 'Admin' or 'Production Head' only.
+        
+        AUTOMATIC TRIGGER:
+        Upon finalization, this method AUTOMATICALLY calls FGStockService.
+        No manual sync is required.
         """
         # 1. Fetch Document (prefer document_id)
         doc = None
@@ -686,7 +690,7 @@ class HourlyProductionService:
         
         # ============================================================
         # 2. AUTHORIZATION GATE (Admin or Production Head only)
-
+        # ============================================================
         user_role = getattr(current_user, 'role', None)
         user_role2 = getattr(current_user, 'role2', None)
         
@@ -731,6 +735,43 @@ class HourlyProductionService:
             f"Document {doc.doc_no} finalized by {current_user.full_name} "
             f"({current_user.emp_id}). {finalized_count} entries marked as FINAL."
         )
+
+        # ============================================================
+        # 5. AUTOMATIC FG STOCK UPDATE (NO MANUAL SYNC NEEDED)
+        # ============================================================
+        try:
+            # This triggers automatically. The user does not need to click a separate sync button.
+            await FGStockService.update_from_hourly_production(
+                doc, 
+                current_user.emp_id
+            )
+            logger.info(f"✅ AUTO-SYNC: FG Stock updated successfully for document {doc.doc_no}")
+            
+            # VALIDATION: Verify sync actually happened
+            from app.shared.variant_utils import construct_variant_name
+            variant_name = construct_variant_name(doc.part_description, doc.side)
+            stock = await FGStockService.get_or_create_stock(doc.date, variant_name)
+            
+            if stock.production_added == 0 and doc.totals.total_ok_qty > 0:
+                logger.error(
+                    f"❌ SYNC VERIFICATION FAILED: Production not recorded in FG Stock. "
+                    f"Expected: {doc.totals.total_ok_qty}, Got: {stock.production_added}"
+                )
+                raise HTTPException(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Finalization failed: Production data not synced to FG Stock. Please contact admin."
+                )
+            
+        except HTTPException:
+            # Re-raise HTTP exceptions (including our validation error)
+            raise
+        except Exception as e:
+            # CRITICAL: Block finalization if sync fails
+            logger.error(f"❌ AUTO-SYNC FAILED: Failed to update FG Stock for {doc.doc_no}: {e}", exc_info=True)
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Finalization failed: Could not sync to FG Stock. Error: {str(e)}"
+            )
         
         return doc
 

@@ -11,7 +11,53 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     response_model=LoginResponse,
     status_code=status.HTTP_200_OK,
     summary="User Login",
-    description="Authenticates a user. Compatible with Swagger UI 'Authorize' button."
+    description="""
+    Authenticate a user and obtain an access token for API requests.
+    
+    **Authentication Method:** OAuth2 Password Flow (compatible with Swagger UI 'Authorize' button)
+    
+    **Request Parameters:**
+    - `username`: Employee ID or email address
+    - `password`: User password
+    
+    **Response Fields:**
+    - `access_token`: JWT token for authenticating subsequent API requests
+    - `token_type`: Always "bearer"
+    - `emp_id`: Employee ID
+    - `role`: User role (Admin, HR, Production, Employee, etc.)
+    - `email`: User email address
+    - `full_name`: Employee full name
+    
+    **Token Usage:**
+    Include the token in subsequent requests using the Authorization header:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+    
+    **Security:**
+    - Passwords are securely hashed
+    - Tokens have configurable expiration
+    - Failed login attempts are logged
+    """,
+    responses={
+        200: {
+            "description": "Login successful - returns access token and user information",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                        "token_type": "bearer",
+                        "emp_id": "EMP001",
+                        "role": "Employee",
+                        "email": "employee@example.com",
+                        "full_name": "John Doe"
+                    }
+                }
+            }
+        },
+        401: {"description": "Invalid credentials - username or password incorrect"},
+        400: {"description": "Invalid request format"}
+    }
 )
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """

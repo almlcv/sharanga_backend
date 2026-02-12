@@ -35,17 +35,44 @@ def _to_response_model(document) -> dict:
     "/",
     response_model=PartConfigResponse,
     status_code=status.HTTP_200_OK,
-    summary="Create or Update Part",
+    summary="Create or Update Part Configuration",
     description="""
-    Creates a new part configuration or updates an existing one.
+    Create a new part configuration or update an existing one (Upsert operation).
+    
+    **Authorization:** Requires Admin or Production role.
+    
+    **Request Body:**
+    - `part_description`: Unique part description/name
+    - `part_number`: Unique part number/code
+    - `machine`: Machine assigned to produce this part
+    - `bin_capacity`: Bin capacity for FG stock automation
+    - `crate_sides`: Boolean - if True, automatically generates LH and RH variations
+    - `raw_material`: Raw material specification (optional)
+    - `weight`: Part weight (optional)
+    - `cycle_time`: Production cycle time (optional)
+    - `is_active`: Active status (default: true)
     
     **Behavior:**
-    - If `part_description` already exists, it updates the record (Upsert).
-    - If `crate_sides` is True, automatically generates 'LH' and 'RH' variations.
-    - Enforces unique `part_description` and `part_number` constraints.
+    - **If part_description exists**: Updates the existing record (Upsert)
+    - **If crate_sides = true**: Automatically creates two variations:
+      - Part with "-LH" suffix (Left Hand)
+      - Part with "-RH" suffix (Right Hand)
+    - **Validation**: Enforces unique part_description and part_number
     
-    **Role Required:** Admin or Production.
-    """
+    **Use Cases:**
+    - Add new part to production system
+    - Update existing part specifications
+    - Configure sided parts (LH/RH) automatically
+    
+    **Example:**
+    Create "Dashboard Panel" with LH/RH sides, bin capacity 100, machine "M1".
+    """,
+    responses={
+        200: {"description": "Part created or updated successfully"},
+        400: {"description": "Duplicate part_description/part_number or validation error"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions (requires Admin or Production role)"}
+    }
 )
 async def create_or_update_part_config(
     part_data: PartConfigCreate,
@@ -58,14 +85,39 @@ async def create_or_update_part_config(
 @router.get(
     "/",
     response_model=List[PartConfigResponse],
-    summary="Get All Parts",
+    summary="Get All Part Configurations",
     description="""
-    Retrieves a list of all part configurations.
+    Retrieve a list of all part configurations with optional filtering.
     
-    **Filtering:**
-    - `active_only=True` (default): Returns only parts currently in production.
-    - `active_only=False`: Returns all parts including archived/deactivated ones.
-    """
+    **Query Parameters:**
+    - `active_only` (boolean, default: true): Filter by active status
+      - `true`: Returns only active parts currently in production
+      - `false`: Returns all parts including deactivated/archived ones
+    
+    **Returns:**
+    List of part configurations, each containing:
+    - Part description and number
+    - Machine assignment
+    - Bin capacity
+    - Raw material specifications
+    - Technical details (weight, cycle time)
+    - Active status
+    - Side information (LH/RH if applicable)
+    
+    **Use Cases:**
+    - View all active parts for production planning
+    - Review part specifications
+    - Populate dropdown lists in UI
+    - Export part master data
+    
+    **Example:**
+    Get all active parts: `?active_only=true`
+    Get all parts including inactive: `?active_only=false`
+    """,
+    responses={
+        200: {"description": "List of part configurations retrieved successfully"},
+        401: {"description": "Not authenticated"}
+    }
 )
 async def get_all_parts(
     active_only: bool = True,
@@ -79,12 +131,37 @@ async def get_all_parts(
 @router.get(
     "/{part_description}",
     response_model=PartConfigResponse,
-    summary="Get Part by Description",
+    summary="Get Part Configuration by Description",
     description="""
-    Retrieves detailed specifications for a specific part.
+    Retrieve detailed specifications for a specific part by its description.
     
-    **Context:** Used by the Frontend to populate forms and by FG Stock to fetch automation settings (Bin Capacity).
-    """
+    **Path Parameters:**
+    - `part_description`: Unique part description/name
+    
+    **Returns:**
+    Complete part configuration including:
+    - Part number and description
+    - Machine assignment
+    - Bin capacity (used by FG Stock automation)
+    - Raw material specifications
+    - Technical specifications (weight, cycle time)
+    - Side information (LH/RH if applicable)
+    - Active status
+    
+    **Use Cases:**
+    - Frontend forms: Populate part details when user selects a part
+    - FG Stock: Fetch bin capacity for automated stock calculations
+    - Production planning: Get machine and cycle time information
+    - Quality control: Verify part specifications
+    
+    **Example:**
+    Get configuration for "Dashboard Panel-LH" to display in production form.
+    """,
+    responses={
+        200: {"description": "Part configuration retrieved successfully"},
+        404: {"description": "Part not found"},
+        401: {"description": "Not authenticated"}
+    }
 )
 async def get_part_by_description(
     part_description: str,
@@ -97,18 +174,47 @@ async def get_part_by_description(
 @router.patch(
     "/{part_description}",
     response_model=PartConfigResponse,
-    summary="Update Part Details",
+    summary="Update Part Technical Specifications",
     description="""
-    Updates technical specifications (Machine, Bin Capacity, RM, etc.).
+    Update technical specifications for an existing part (Partial Update).
     
-    **Safety:**
-    - `part_description` is **immutable**. Changing the name would break links to historical FG Stock data.
-    - Only fields provided in the request body are updated (Partial Update).
+    **Authorization:** Requires Admin or Production role.
     
-    **Use Case:** Correcting `bin_capacity` or changing `machine` assignment.
+    **Path Parameters:**
+    - `part_description`: Part description (immutable identifier)
     
-    **Role Required:** Admin or Production.
-    """
+    **Request Body (all fields optional):**
+    - `machine`: Update machine assignment
+    - `bin_capacity`: Update bin capacity for FG stock
+    - `raw_material`: Update raw material specification
+    - `weight`: Update part weight
+    - `cycle_time`: Update production cycle time
+    - `part_number`: Update part number (use with caution)
+    
+    **Safety Rules:**
+    - `part_description` is **immutable** - cannot be changed via this endpoint
+    - Changing part_description would break links to historical data (FG Stock, production records)
+    - Only provided fields are updated (partial update)
+    - Other fields remain unchanged
+    
+    **Use Cases:**
+    - Correct bin_capacity when automation settings change
+    - Update machine assignment when production line changes
+    - Adjust cycle_time based on process improvements
+    - Update raw material specifications
+    
+    **Example:**
+    Update bin capacity from 100 to 120 for "Dashboard Panel-LH".
+    
+    **Warning:** To change part_description, create a new part and deactivate the old one.
+    """,
+    responses={
+        200: {"description": "Part specifications updated successfully"},
+        404: {"description": "Part not found"},
+        400: {"description": "Invalid data or duplicate part_number"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions"}
+    }
 )
 async def update_part_details(
     part_description: str,
@@ -121,14 +227,50 @@ async def update_part_details(
 
 @router.patch(
     "/{part_description}/status",
-    summary="Toggle Part Status",
+    summary="Activate or Deactivate Part",
     description="""
-    Activates or Deactivates a part.
+    Toggle the active status of a part configuration.
     
-    **Deactivation:** The part will not appear in daily production lists, but historical FG Stock data remains intact.
+    **Authorization:** Requires Admin role.
     
-    **Role Required:** Admin.
-    """
+    **Path Parameters:**
+    - `part_description`: Part description to update
+    
+    **Request Body:**
+    - `is_active`: Boolean (true = activate, false = deactivate)
+    
+    **Effects of Deactivation:**
+    - Part will NOT appear in:
+      - Daily production lists
+      - Active part dropdowns
+      - New production planning
+    - Historical data remains intact:
+      - FG Stock records preserved
+      - Production history preserved
+      - All past transactions remain accessible
+    
+    **Effects of Activation:**
+    - Part becomes available for:
+      - New production planning
+      - Production entry forms
+      - Stock management
+    
+    **Use Cases:**
+    - **Deactivate**: Part discontinued, obsolete, or temporarily out of production
+    - **Activate**: Reintroduce previously discontinued part
+    
+    **Example:**
+    Deactivate "Old Model Dashboard" when replaced by new model.
+    
+    **Note:** This is a soft delete. Part data is never permanently removed.
+    """,
+    responses={
+        200: {"description": "Part status updated successfully"},
+        404: {"description": "Part not found"},
+        400: {"description": "Invalid status value"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Insufficient permissions (requires Admin role)"}
+    }
 )
 async def update_part_status(
     part_description: str,
