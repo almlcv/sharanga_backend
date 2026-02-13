@@ -7,16 +7,16 @@ import json
 from app.core.schemas.production.production_plan import (
     MonthlyPlanRequest,
     MonthlyPlanResponse,
-    DailyPlanMonthResponse,
-    SetDailyPlanRequest,
-    GenerateDailyPlanRequest,
+    # DailyPlanMonthResponse,
+    # SetDailyPlanRequest,
+    # GenerateDailyPlanRequest,
 )
 from app.core.models.production.production_plan import MonthlyProductionPlan
 from app.core.models.parts_config import PartConfiguration
 from app.core.schemas.auth import CurrentUser
 from app.core.auth.deps import require_roles
 
-from app.modules.daily_plan.daily_plan_service import DailyPlanService
+# from app.modules.daily_plan.daily_plan_service import DailyPlanService
 
 router = APIRouter(tags=["Production Plan"], prefix="/production/plan")
 

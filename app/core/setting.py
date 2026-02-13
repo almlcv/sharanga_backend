@@ -27,10 +27,6 @@ class Settings(BaseSettings):
     # Environment
     ENVIRONMENT: str = "development"
 
-    # Redis
-    REDIS_HOST: str
-    REDIS_PORT: str
-
     # Email Configuration
     MAIL_USERNAME: str
     MAIL_PASSWORD: str

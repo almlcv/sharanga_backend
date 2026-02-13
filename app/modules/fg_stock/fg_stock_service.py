@@ -563,7 +563,10 @@ class FGStockService:
                         ]
                     }
                 }
-            }
+            },
+            
+            # Step 5: Sort by variant_name A to Z
+            {"$sort": {"variant_name": 1}}
         ]
 
         # 3. Execute Aggregation using RAW Motor Client
